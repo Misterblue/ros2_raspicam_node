@@ -12,154 +12,145 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import queue
+import threading
+import time
 import sys
 
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
 
-import Adafruit_PCA9685
+import picamera
 
-from ros2_adafruit_pwmhat_msgs.msg import PWMPinPulseLength, PWMPulseLength
-from ros2_adafruit_pwmhat_msgs.msg import PWMPinAngle, PWMAngle
-
-class ROS2_Adafruit_pwmhat_node(Node):
-    # Node for driving Adafruit PWM hat for the Raspberry Pi 3
-    # Subscribes to multiple topics to accept settings for named pins and for
-    #    setting values in both raw pulse length and angle.
+class ROS2_raspicam_node(Node):
 
     def __init__(self):
-        super().__init__('ros2_adafruit_pwmhat_node', namespace='pwmhatter')
+        super().__init__('ros2_raspicam_node', namespace='raspicam')
 
-        self.pwm = Adafruit_PCA9685.PCA9685()
-        # frequency can be from 40 to 1000
-        self.pwm_frequency = 100
-        self.pwm.set_pwm_freq(self.pwm_frequency)
+        self.camera = picamera.PiCamera()
+        time.sleep(1);  # let camera initialization complete
 
-        # subscriptions for different message types (named, pins, angle)
-        self.subs = []
-        self.subs.append(self.create_subscription(
-                    PWMPinAngle, 'pinAngle', self.pinAngle_callback))
-        self.subs.append(self.create_subscription(
-                    PWMAngle, 'angle', self.angle_callback))
-        self.subs.append(self.create_subscription(
-                    PWMPinPulseLength, 'pinPulseLength', self.pinPulseLength_callback))
-        self.subs.append(self.create_subscription(
-                    PWMPulseLength, 'pulseLength', self.pulseLength_callback))
+        self.initialize_publisher()
+        self.set_camera_parameters()
+        self.initialize_capture_queue()
 
-        # THE FOLLOWING DATA WILL COME FROM PARAMETER FILES WHEN THAT WORKS FOR ROS2 AND PYTHON
+    def destroy_node(self):
+        # overlay Node function called when class is being stopped and camera needs closing
+        if hasattr(self, 'capture_event') and self.capture_event != None:
+            self.capture_event.set()
+        if hasattr(self, 'publisher_event') and self.publisher_event != None:
+            self.publisher_event.set()
+        # if hasattr(self, 'compressed_publisher') and self.compressed_publisher != None:
+        #     # nothing to do
+        if hasattr(self, 'camera') and self.camera != None:
+            self.camera.close()
+        super().destroy_node()
 
-        # parameters for each type of device that can be connected to a pin
-        self.deviceTypes = {}
-        self.deviceTypes['SG90'] = {
-            'name': 'SG90',
-            'range_degrees': [ -90, 90 ],
-            # documentation says 1..2ms but experimentation says the range is a little larger
-            'min_pulse_length': 0.6,    # pulse length for -90 degrees
-            'max_pulse_length': 2.4     # pulse length for +90 degrees
-            }
-
-        # what's connected to each pin
-        self.pins = []
-        for ii in range(0,15):
-            self.pins.append( { 'pin': ii, 'device_type': 'SG90' } )
-        self.pins[8]['channel'] = 'tilt'
-        self.pins[9]['channel'] = 'pan'
-
-        # map channel names to pin numbers
-        self.channels = {}
-        for pinIndex in range(len(self.pins)):
-            aPin = self.pins[pinIndex]
-            if 'channel' in aPin:
-                self.channels[aPin['channel']] = pinIndex
-
-    def angle_callback(self, request):
-        # set PWM based on channel name and angle
-        self.get_logger().debug("PWMHat: chan/angle: chan=%s angle=%s"
-                    % (request.chan, request.angle) )
-        if request.chan in self.channels:
-            pin = self.channels[request.chan]
-            pulse_length = self.convert_angle_to_pulse_length(pin, request.angle_units, request.angle)
-            self.set_pwm_by_pulse_length(pin, pulse_length)
-        else:
-            self.get_logger().error("PWMHAT: chan/angle: channel does not exist: chan=%s, angle=%s"
-                    % (request.chan, request.angle) )
-        return
+    def initialize_publisher(self):
+        self.compressed_publisher = self.create_publisher(CompressedImage, 'raspicam_compressed')
+        self.frame_num = 0
         
-    def pinAngle_callback(self, request):
-        # set PWM based on pin and angle
-        self.get_logger().debug("PWMHat: pin/angle: pin=%s angle=%s"
-                    % (request.pin, request.angle) )
-        if request.pin >= 0 and request.pin < len(self.pins):
-            pulse_length = self.convert_angle_to_pulse_length(request.pin, request.angle_units, request.angle)
-            self.set_pwm_by_pulse_length(request.pin, pulse_length)
-        else:
-            self.get_logger().error("PWMHAT: pin/angle: pin out of range: pin=%s, angle=%s"
-                    % (request.pin, request.angle) )
-        return
+    def set_camera_parameters(self):
+        # NOTE: WHEN PYTHON HAS ROS2 PARAMETERS, PARAMERTIZE ALL THE FOLLOWING
 
-    def pulseLength_callback(self, request):
-        # set PWM based on channel and pulse length
-        self.get_logger().debug("PWMHat: chan/pulseLength: chan=%s pulse_length=%s"
-                    % (request.chan, request.pulse_length) )
-        if request.chan in self.channels:
-            pin = self.channels[request.chan]
-            self.set_pwm_by_pulse_length(pin, request.pulse_length)
-        else:
-            self.get_logger().error("PWMHAT: chan/pulseLength: channel does not exist: chan=%s, pulseLength=%s"
-                    % (request.chan, request.pulse_length) )
-        return
+        # https://picamera.readthedocs.io/en/release-1.13/api_camera.html
+        # off, auto, sunlight, cloudy, shade, trungsten, florescent, incandescent, flash, horizon
+        self.camera.awb_mode = 'auto'
+        # self.camera.annotate_background = picamera.Color('black')
+        # self.camera.annotate_foreground = picamera.Color('yellow')
+        # self.camera.annotate_text = '')
+        # self.camera.annotate_text_size = 10  # 6..160, default 32
+        self.camera.brightness = 55  # 0..100, default 50
+        self.camera.contrast = 0     # -100..100, default 0
+        # self.camera.exif_tags['IFD0.Copyright'] = 'Copyright 2018, Robert Adams';
+        # self.camera.exif_tags['EXIF.UserComment'] = '';
+        self.camera.exposure_compensation = 0    # -25..25, default 0, one step = 1/6 F-stop
+        # off, auto, night, backlight, spotlight, sports, snow, beach, antishake, fireworks
+        self.camera.exposure_mode = 'auto'
+        # the camera is upside down in initial setup
+        self.camera.hflip = True
+        self.camera.vflip = True
+        # 'none', 'negative', 'solarize', 'sketch', 'denoise', 'emboss', 'oilpaint',
+        # 'hatch', 'gpen', 'pastel', 'watercolor', 'film', 'blur', 'saturation',
+        # 'colorswap', 'washedout', 'posterise', 'colorpoint', 'colorbalance', 'cartoon', 'deinterlace1',
+        # 'deinterlace2'
+        self.camera.image_effect = 'none'
+        # 'average' 'spot' 'backlit' 'matrix'
+        self.camera.meter_mode = 'backlit'
+        self.camera.resolution = '640x480'
+        self.camera.saturation = 0   # -100..100, default 0
+        self.camera.sharpness = 30   # -100..100, default 0
 
-    def pinPulseLength_callback(self, request):
-        # set PWM based on pin number and pulse length
-        self.get_logger().debug("PWMHAT: pin/pulseLength: pin=%s pulse_length=%s"
-                    % (request.pin, request.pulse_length) )
-        if request.pin >= 0 and request.pin < len(self.pins):
-            self.set_pwm_by_pulse_length(request.pin, request.pulse_length)
-        else:
-            self.get_logger().error("PWMHAT: pin/pulseLength: pin out of range: pin=%s, angle=%s"
-                    % (request.pin, request.angle) )
-        return
 
-    def convert_angle_to_pulse_length(self, pin, units, angle):
-        # given an angle and a pin description, return pulse length
-        calc_pulse_length = 1.0
-        conv_angle = angle
-        if units == PWMAngle.RADIANS:
-            conv_angle = angle * (180 / 3.14159265)
+    def initialize_capture_queue(self):
+        # Create a queue and two threads to capture and then push the images to the topic
+        self.queue_lock = threading.Lock()
 
-        pinInfo = self.pins[pin]
-        deviceType = self.deviceTypes[pinInfo['device_type']]
-        if conv_angle >= deviceType['range_degrees'][0] and conv_angle <= deviceType['range_degrees'][1]:
-            # if angle is in range, adjust the range to be zero based
-            conv_angle -= deviceType['range_degrees'][0]
-            calc_pulse_length = (deviceType['max_pulse_length'] - deviceType['min_pulse_length']) / 180
-            calc_pulse_length *= conv_angle
-            calc_pulse_length += deviceType['min_pulse_length']
-        else:
-            self.get_logger().error("PWMHat: Pulse length calc: angle out of bounds: pin=%s, angle=%s"
-                    % (pin, angle) )
+        self.capture_queue = queue.Queue()
+        # self.capture_queue = queue.SimpleQueue()  # introduced in Python 3.7
 
-        return calc_pulse_length
+        # thread to capture camera images and place in queue
+        self.capture_event = threading.Event()
+        self.capturer = threading.Thread(target=self.take_pictures, name='capturer')
 
-    def set_pwm_by_pulse_length(self, pin, pulse_length):
-        # turn specified PWM channel on for the given pulse_length in microseconds
-        pulse_scaler = 1000000              # microseconds
-        pulse_scaler //= self.pwm_frequency # microseconds per cycle
-        pulse_scaler //= 4096               # microseconds per PWM count
-        conv_pulse_length = int((pulse_length * 1000) / pulse_scaler)
-        conv_pin = int(pin)
-        # pwm.set_pwm(channel, onTickTime, offTickTime) where on/off are within 0..4095
-        self.get_logger().debug("set_pwm: pin=%s conv_pulse_length=%s" % (conv_pin, conv_pulse_length) )
-        self.pwm.set_pwm(conv_pin, 0, conv_pulse_length)
+        # thread to read queue and send them to the topic
+        self.publisher_event = threading.Event()
+        self.publisher = threading.Thread(target=self.publish_images, name='publisher')
 
+        self.capturer.start()
+        self.publisher.start()
+
+    def take_pictures(self):
+        # Take compressed images and put into the queue. Runs until 
+        # 'jpeg', 'rgb'
+        for capture in self.camera.capture_continuous(self.write_capture(self), format='jpeg'):
+            if self.capture_event.is_set():
+                break
+            time.sleep(0.5)
+
+    class write_capture():
+        # Writer object that writes the passed data to the queue
+        def __init__(self, pparent):
+            self.parent = pparent
+
+        def write(self, d):
+            with self.parent.queue_lock:
+                msg = CompressedImage()
+                msg.data = d
+                msg.format = 'jpeg'
+                msg.header.frame_id = str(self.parent.frame_num)
+                self.parent.frame_num += 1
+                self.parent.get_logger().info('CAM: capture frame. size=%s, frame=%s'
+                        % (len(d), msg.header.frame_id) )
+                # msg.header.stamp = time.Time
+                self.parent.capture_queue.put(msg)
+
+        def flush(self):
+            return
+
+    def publish_images(self):
+        # Loop reading from capture queue and send to ROS topic
+        while True:
+            try:
+                msg = self.capture_queue.get(block=True, timeout=2)
+            except queue.Empty:
+                msg = None
+            if self.publisher_event.is_set():
+                break
+            if msg != None:
+                self.get_logger().info('CAM: sending frame. frame=%s'
+                                    % (msg.header.frame_id) )
+                self.compressed_publisher.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)
 
-    pwmNode = ROS2_Adafruit_pwmhat_node()
+    camNode = ROS2_raspicam_node()
 
-    rclpy.spin(pwmNode)
+    rclpy.spin(camNode)
 
+    camNode.destroy_node()
     rclpy.shutdown()
 
 
