@@ -37,10 +37,6 @@ class ROS2_raspicam_node(Node):
 
     def destroy_node(self):
         # overlay Node function called when class is being stopped and camera needs closing
-        if hasattr(self, 'capture_event') and self.capture_event != None:
-            self.capture_event.set()
-        if hasattr(self, 'publisher_event') and self.publisher_event != None:
-            self.publisher_event.set()
         # if hasattr(self, 'compressed_publisher') and self.compressed_publisher != None:
         #     # nothing to do
         if hasattr(self, 'camera') and self.camera != None:
@@ -101,13 +97,31 @@ class ROS2_raspicam_node(Node):
         self.capturer.start()
         self.publisher.start()
 
+    def stop_workers(self):
+        # if workers are initialized and running, tell them to stop and wait until stopped
+        if hasattr(self, 'capture_event') and self.capture_event != None:
+            self.capture_event.set()
+        if hasattr(self, 'publisher_event') and self.publisher_event != None:
+            self.publisher_event.set()
+        if hasattr(self, 'publisher') and self.publisher.is_alive():
+            self.publisher.join()
+        if hasattr(self, 'capturer') and self.capturer.is_alive():
+            self.capturer.join()
+
+
     def take_pictures(self):
         # Take compressed images and put into the queue. Runs until 
         # 'jpeg', 'rgb'
-        for capture in self.camera.capture_continuous(self.write_capture(self), format='jpeg'):
-            if self.capture_event.is_set():
-                break
-            time.sleep(0.5)
+        try:
+            for capture in self.camera.capture_continuous(self.write_capture(self), format='jpeg'):
+                if self.capture_event.is_set():
+                    break
+                time.sleep(0.5)
+                # The exit flag could have been set while in the sleep
+                if self.capture_event.is_set():
+                    break
+        except:
+            self.get_logger().info('CAM: exiting take_pictures because of exception')
 
     class write_capture():
         # Writer object that writes the passed data to the queue
@@ -115,16 +129,17 @@ class ROS2_raspicam_node(Node):
             self.parent = pparent
 
         def write(self, d):
-            with self.parent.queue_lock:
-                msg = CompressedImage()
-                msg.data = d
-                msg.format = 'jpeg'
-                msg.header.frame_id = str(self.parent.frame_num)
-                self.parent.frame_num += 1
-                self.parent.get_logger().info('CAM: capture frame. size=%s, frame=%s'
-                        % (len(d), msg.header.frame_id) )
-                # msg.header.stamp = time.Time
-                self.parent.capture_queue.put(msg)
+            if not self.parent.capture_event.is_set():
+                with self.parent.queue_lock:
+                    msg = CompressedImage()
+                    msg.data = d
+                    msg.format = 'jpeg'
+                    msg.header.frame_id = str(self.parent.frame_num)
+                    self.parent.frame_num += 1
+                    self.parent.get_logger().info('CAM: capture frame. size=%s, frame=%s'
+                            % (len(d), msg.header.frame_id) )
+                    # msg.header.stamp = time.Time
+                    self.parent.capture_queue.put(msg)
 
         def flush(self):
             return
@@ -148,9 +163,15 @@ def main(args=None):
 
     camNode = ROS2_raspicam_node()
 
-    rclpy.spin(camNode)
+    try:
+        rclpy.spin(camNode)
+    except KeyboardInterrupt:
+        camNode.get_logger().info('CAM: Keyboard interrupt')
+
+    camNode.stop_workers()
 
     camNode.destroy_node()
+
     rclpy.shutdown()
 
 
