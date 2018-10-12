@@ -42,6 +42,8 @@ source install/local-setup.bash    # set local package links into environment va
 ros2 run ros2_raspicam_node service
 ```
 
+As of October 12, 2018, building Python only modules with ```colcon``` doesn't add the path to the install directory to ADMENT_PATH so the above ```ros2 run``` command will say "program not found". This should be fixed in a later release but, as of now, you will have to manually add the path to the search path.
+
 ### Notes
 
 This programs doesn't use ROS2 parameters because, as of October 11, 2018, the Python API for parameters is not complete. Parameters will be added when available (hopefully in the Dec 2018 release).
