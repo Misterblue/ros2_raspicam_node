@@ -74,7 +74,11 @@ class ROS2_raspicam_node(Node):
         self.camera.image_effect = 'none'
         # 'average' 'spot' 'backlit' 'matrix'
         self.camera.meter_mode = 'backlit'
-        self.camera.resolution = '640x480'
+        # self.camera.resolution = ( 640, 480 )
+        self.camera.resolution = ( 800, 600 )
+        # self.camera.resolution = ( 1280, 720 )
+        self.get_logger().debug('CAM: setting capture resolution = %s/%s'
+                % (self.camera.resolution[0], self.camera.resolution[1]))
         self.camera.saturation = 0   # -100..100, default 0
         self.camera.sharpness = 30   # -100..100, default 0
 
@@ -121,7 +125,7 @@ class ROS2_raspicam_node(Node):
                 if self.capture_event.is_set():
                     break
         except:
-            self.get_logger().info('CAM: exiting take_pictures because of exception')
+            self.get_logger().error('CAM: exiting take_pictures because of exception')
 
     class write_capture():
         # Writer object that writes the passed data to the queue
@@ -136,7 +140,7 @@ class ROS2_raspicam_node(Node):
                     msg.format = 'jpeg'
                     msg.header.frame_id = str(self.parent.frame_num)
                     self.parent.frame_num += 1
-                    self.parent.get_logger().info('CAM: capture frame. size=%s, frame=%s'
+                    self.parent.get_logger().debug('CAM: capture frame. size=%s, frame=%s'
                             % (len(d), msg.header.frame_id) )
                     # msg.header.stamp = time.Time
                     self.parent.capture_queue.put(msg)
@@ -147,6 +151,8 @@ class ROS2_raspicam_node(Node):
     def publish_images(self):
         # Loop reading from capture queue and send to ROS topic
         while True:
+            if self.publisher_event.is_set():
+                break
             try:
                 msg = self.capture_queue.get(block=True, timeout=2)
             except queue.Empty:
@@ -154,7 +160,7 @@ class ROS2_raspicam_node(Node):
             if self.publisher_event.is_set():
                 break
             if msg != None:
-                self.get_logger().info('CAM: sending frame. frame=%s'
+                self.get_logger().debug('CAM: sending frame. frame=%s'
                                     % (msg.header.frame_id) )
                 self.compressed_publisher.publish(msg)
 
