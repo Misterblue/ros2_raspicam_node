@@ -18,6 +18,7 @@ import time
 import sys
 
 import rclpy
+from rclpy.parameter import Parameter
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 
@@ -53,14 +54,14 @@ class ROS2_raspicam_node(Node):
         # https://picamera.readthedocs.io/en/release-1.13/api_camera.html
         # off, auto, sunlight, cloudy, shade, trungsten, florescent, incandescent, flash, horizon
         self.camera.awb_mode = str(self.get_parameter_or('camera_awb_mode', 'auto'))
-        self.get_parameter_set_if_set('camera_annotate_background',
-                lambda xx: self.camera.annotate_background = xx, str())
-        self.get_parameter_set_if_set('camera_annotate_foreground',
-                lambda xx: self.camera.annotate_foreground = xx, str())
-        self.get_parameter_set_if_set('camera_annotate_text',
-                lambda xx: self.camera.annotate_text = xx, str())
-        self.get_parameter_set_if_set('camera_annotate_text_size',
-                lambda xx: self.camera.annotate_text_size = xx, int())
+        # self.get_parameter_set_if_set('camera_annotate_background',
+        #         lambda xx: self.camera.annotate_background = xx, str())
+        # self.get_parameter_set_if_set('camera_annotate_foreground',
+        #         lambda xx: self.camera.annotate_foreground = xx, str())
+        # self.get_parameter_set_if_set('camera_annotate_text',
+        #         lambda xx: self.camera.annotate_text = xx, str())
+        # self.get_parameter_set_if_set('camera_annotate_text_size',
+        #         lambda xx: self.camera.annotate_text_size = xx, int())
         # self.camera.annotate_background = picamera.Color('black')
         # self.camera.annotate_foreground = picamera.Color('yellow')
         # self.camera.annotate_text = '')
@@ -69,16 +70,16 @@ class ROS2_raspicam_node(Node):
         self.camera.brightness = int(self.get_parameter_or('camera_brightness', 55))
         # Contrast: -100..100, default 0
         self.camera.contrast = int(self.get_parameter_or('camera_contrast', 0))
-        self.get_parameter_set_if_set('camera_exif_copyright',
-                lambda xx: self.camera.exif_tage['IFDO.Copyright'] = xx, str())
-        self.get_parameter_set_if_set('camera_exif_user_comment',
-                lambda xx: self.camera.exif_tage['EXIF.UserComment'] = xx, str())
+        # self.get_parameter_set_if_set('camera_exif_copyright',
+        #         lambda xx: self.camera.exif_tage['IFDO.Copyright'] = xx, str())
+        # self.get_parameter_set_if_set('camera_exif_user_comment',
+        #         lambda xx: self.camera.exif_tage['EXIF.UserComment'] = xx, str())
         # self.camera.exif_tags['IFD0.Copyright'] = 'Copyright 2018, Robert Adams';
         # self.camera.exif_tags['EXIF.UserComment'] = '';
         # Exposure compenstation: -25..25, default 0, one step = 1/6 F-stop
         self.camera.exposure_compensation = int(self.get_parameter_or('camera_exposure_compenstation', 0))
         # off, auto, night, backlight, spotlight, sports, snow, beach, antishake, fireworks
-        self.camera.exposure_mode = str(self.get_parameter_or('camera_exposure_mode', 'auto))
+        self.camera.exposure_mode = str(self.get_parameter_or('camera_exposure_mode', 'auto'))
         # the camera is upside down in initial setup
         self.camera.hflip = self.get_parameter_or('camera.hflip', True)
         self.camera.vflip = self.get_parameter_or('camera.vflip', True)
