@@ -42,11 +42,13 @@ source install/local-setup.bash    # set local package links into environment va
 ros2 run ros2_raspicam_node service
 ```
 
-As of October 12, 2018, building Python only modules with ```colcon``` doesn't add the path to the install directory to ADMENT_PATH so the above ```ros2 run``` command will say "program not found". This should be fixed in a later release but, as of now, you will have to manually add the path to the search path.
+As of November 1, 2018, building Python only modules with ```colcon``` doesn't add the path to the install directory to AMENT_PREFIX_PATH so the above ```ros2 run``` command will say "program not found". This should be fixed in a later release but, as of now, you will have to manually add the path to the search path.
 
 ### Notes
 
-This programs doesn't use ROS2 parameters because, as of October 11, 2018, the Python API for parameters is not complete. Parameters will be added when available (hopefully in the Dec 2018 release).
+This program uses parameters to set the camera statistics but, as of November 1,2018, this requires
+building from the latest ROS2 sources as the 'bouncy' release didn't yet have parameters for
+Python programs. Hopefully that will be all fixed in the December 2018 release.
 
 [PiCamera]: https://picamera.readthedocs.io/en/release-1.13/
 
