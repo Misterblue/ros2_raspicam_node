@@ -30,6 +30,10 @@ class ROS2_raspicam_node(Node):
         super().__init__('ros2_raspicam_node', namespace='raspicam')
 
         self.set_parameters( [
+            Parameter('compressed_image', Parameter.Type.BOOL, True),
+            Parameter('image_topic', Parameter.Type.STRING, 'raspicam_uncompressed'),
+            Parameter('compressed_image_topic', Parameter.Type.STRING, 'raspicam_compressed'),
+
             # off, auto, sunlight, cloudy, shade, trungsten, florescent, incandescent, flash, horizon
             Parameter('camera_awb_mode', Parameter.Type.STRING, 'auto'),
             # Parameter('camera_annotate_background', Parameter.Type.STRING, 'black'),
@@ -75,14 +79,19 @@ class ROS2_raspicam_node(Node):
 
     def destroy_node(self):
         # overlay Node function called when class is being stopped and camera needs closing
-        # if hasattr(self, 'compressed_publisher') and self.compressed_publisher != None:
+        # if hasattr(self, 'publisher') and self.publisher != None:
         #     # nothing to do
         if hasattr(self, 'camera') and self.camera != None:
             self.camera.close()
         super().destroy_node()
 
     def initialize_publisher(self):
-        self.compressed_publisher = self.create_publisher(CompressedImage, 'raspicam_compressed')
+        if self.get_parameter_value('compressed_image'):
+            self.publisher = self.create_publisher(CompressedImage,
+                                self.get_parameter_value('compressed_image_topic'))
+        else:
+            self.publisher = self.create_publisher(Image,
+                                self.get_parameter_value('image_topic'))
         self.frame_num = 0
         
     def set_camera_parameters(self):
@@ -125,14 +134,14 @@ class ROS2_raspicam_node(Node):
 
         # thread to capture camera images and place in queue
         self.capture_event = threading.Event()
-        self.capturer = threading.Thread(target=self.take_pictures, name='capturer')
+        self.capturer_thread = threading.Thread(target=self.take_pictures, name='capturer')
 
         # thread to read queue and send them to the topic
         self.publisher_event = threading.Event()
-        self.publisher = threading.Thread(target=self.publish_images, name='publisher')
+        self.publisher_thread = threading.Thread(target=self.publish_images, name='publisher')
 
-        self.capturer.start()
-        self.publisher.start()
+        self.capturer_thread.start()
+        self.publisher_thread.start()
 
     def stop_workers(self):
         # if workers are initialized and running, tell them to stop and wait until stopped
@@ -140,10 +149,10 @@ class ROS2_raspicam_node(Node):
             self.capture_event.set()
         if hasattr(self, 'publisher_event') and self.publisher_event != None:
             self.publisher_event.set()
-        if hasattr(self, 'publisher') and self.publisher.is_alive():
-            self.publisher.join()
-        if hasattr(self, 'capturer') and self.capturer.is_alive():
-            self.capturer.join()
+        if hasattr(self, 'publisher_thread') and self.publisher_thread.is_alive():
+            self.publisher_thread.join()
+        if hasattr(self, 'capturer_thread') and self.capturer_thread.is_alive():
+            self.capturer_thread.join()
 
 
     def take_pictures(self):
@@ -195,7 +204,7 @@ class ROS2_raspicam_node(Node):
             if msg != None:
                 self.get_logger().debug('CAM: sending frame. frame=%s'
                                     % (msg.header.frame_id) )
-                self.compressed_publisher.publish(msg)
+                self.publisher.publish(msg)
 
     def get_parameter_or(self, param, default):
         # Helper function to return value of a parameter or a default if not set
