@@ -62,8 +62,8 @@ class ROS2_raspicam_node(Node):
             # 'average' 'spot' 'backlit' 'matrix'
             Parameter('camera_meter_mode', Parameter.Type.STRING, 'average'),
             # 640/480, 800/600, 1280/720
-            Parameter('camera_image_width', Parameter.Type.INTEGER, 800),
-            Parameter('camera_image_height', Parameter.Type.INTEGER, 600),
+            Parameter('camera_image_width', Parameter.Type.INTEGER, 640),
+            Parameter('camera_image_height', Parameter.Type.INTEGER, 480),
             # Saturation: -100..100, default 0
             Parameter('camera_saturation', Parameter.Type.INTEGER, 0),
             # Sharpness: -100..100, default 0
