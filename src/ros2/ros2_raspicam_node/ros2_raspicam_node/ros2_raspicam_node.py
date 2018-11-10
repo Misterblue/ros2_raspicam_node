@@ -29,45 +29,45 @@ class ROS2_raspicam_node(Node):
     def __init__(self):
         super().__init__('ros2_raspicam_node', namespace='raspicam')
 
-        self.set_parameters( [
-            Parameter('compressed_image', Parameter.Type.BOOL, True),
-            Parameter('image_topic', Parameter.Type.STRING, 'raspicam_uncompressed'),
-            Parameter('compressed_image_topic', Parameter.Type.STRING, 'raspicam_compressed'),
+        self.set_parameter_defaults( [
+            ('compressed_image', Parameter.Type.BOOL, True),
+            ('image_topic', Parameter.Type.STRING, 'raspicam_uncompressed'),
+            ('compressed_image_topic', Parameter.Type.STRING, 'raspicam_compressed'),
 
             # off, auto, sunlight, cloudy, shade, trungsten, florescent, incandescent, flash, horizon
-            Parameter('camera_awb_mode', Parameter.Type.STRING, 'auto'),
-            # Parameter('camera_annotate_background', Parameter.Type.STRING, 'black'),
-            # Parameter('camera_annotate_foreground', Parameter.Type.STRING, 'yellow'),
-            # Parameter('camera_annotate_text', Parameter.Type.STRING, 'fun image'),
+            ('camera_awb_mode', Parameter.Type.STRING, 'auto'),
+            # ('camera_annotate_background', Parameter.Type.STRING, 'black'),
+            # ('camera_annotate_foreground', Parameter.Type.STRING, 'yellow'),
+            # ('camera_annotate_text', Parameter.Type.STRING, 'fun image'),
             # text size: 6..160, default 32
-            # Parameter('camera_annotate_text_size', Parameter.Type.INTEGER, 10),
+            # ('camera_annotate_text_size', Parameter.Type.INTEGER, 10),
             # brightness: 1..100, default 50
-            Parameter('camera_brightness', Parameter.Type.INTEGER, 55),
+            ('camera_brightness', Parameter.Type.INTEGER, 55),
             # Contrast: -100..100, default 0
-            Parameter('camera_contrast', Parameter.Type.INTEGER, 0),
-            # Parameter('camera_exif_copyright', Parameter.Type.STRING, 'Copyrightt 2018 MY NAME'),
-            # Parameter('camera_user_comment', Parameter.Type.STRING, 'SOMETHING INFORMATIVE'),
+            ('camera_contrast', Parameter.Type.INTEGER, 0),
+            # ('camera_exif_copyright', Parameter.Type.STRING, 'Copyrightt 2018 MY NAME'),
+            # ('camera_user_comment', Parameter.Type.STRING, 'SOMETHING INFORMATIVE'),
             # Exposure compenstation: -25..25, default 0, one step = 1/6 F-stop
-            Parameter('camera_exposure_compenstation', Parameter.Type.INTEGER, 0),
+            ('camera_exposure_compenstation', Parameter.Type.INTEGER, 0),
             # off, auto, night, backlight, spotlight, sports, snow, beach, antishake, fireworks
-            Parameter('camera_exposure_mode', Parameter.Type.STRING, 'auto'),
+            ('camera_exposure_mode', Parameter.Type.STRING, 'auto'),
             # the camera is upside down in initial setup
-            Parameter('camera_hflip', Parameter.Type.BOOL, True),
-            Parameter('camera_vflip', Parameter.Type.BOOL, True),
+            ('camera_hflip', Parameter.Type.BOOL, True),
+            ('camera_vflip', Parameter.Type.BOOL, True),
             # 'none', 'negative', 'solarize', 'sketch', 'denoise', 'emboss', 'oilpaint',
             # 'hatch', 'gpen', 'pastel', 'watercolor', 'film', 'blur', 'saturation',
             # 'colorswap', 'washedout', 'posterise', 'colorpoint', 'colorbalance', 'cartoon', 'deinterlace1',
             # 'deinterlace2'
-            Parameter('camera_image_effect', Parameter.Type.STRING, 'none'),
+            ('camera_image_effect', Parameter.Type.STRING, 'none'),
             # 'average' 'spot' 'backlit' 'matrix'
-            Parameter('camera_meter_mode', Parameter.Type.STRING, 'average'),
+            ('camera_meter_mode', Parameter.Type.STRING, 'average'),
             # 640/480, 800/600, 1280/720
-            Parameter('camera_image_width', Parameter.Type.INTEGER, 640),
-            Parameter('camera_image_height', Parameter.Type.INTEGER, 480),
+            ('camera_image_width', Parameter.Type.INTEGER, 640),
+            ('camera_image_height', Parameter.Type.INTEGER, 480),
             # Saturation: -100..100, default 0
-            Parameter('camera_saturation', Parameter.Type.INTEGER, 0),
+            ('camera_saturation', Parameter.Type.INTEGER, 0),
             # Sharpness: -100..100, default 0
-            Parameter('camera_sharpness', Parameter.Type.INTEGER, 10),
+            ('camera_sharpness', Parameter.Type.INTEGER, 10),
             ] )
 
         self.camera = picamera.PiCamera()
@@ -97,13 +97,13 @@ class ROS2_raspicam_node(Node):
     def set_camera_parameters(self):
         # https://picamera.readthedocs.io/en/release-1.13/api_camera.html
         self.camera.awb_mode = self.get_parameter_value('camera_awb_mode')
-        self.get_parameter_set_if_set('camera_annotate_background',
+        self.parameter_set_if_set('camera_annotate_background',
                 lambda xx: setattr(self.camera, 'annotate_background', xx))
-        self.get_parameter_set_if_set('camera_annotate_foreground',
+        self.parameter_set_if_set('camera_annotate_foreground',
                 lambda xx: setattr(self.camera, 'annotate_foreground', xx))
-        self.get_parameter_set_if_set('camera_annotate_text',
+        self.parameter_set_if_set('camera_annotate_text',
                 lambda xx: setattr(self.camera, 'annotate_text', xx))
-        self.get_parameter_set_if_set('camera_annotate_text_size',
+        self.parameter_set_if_set('camera_annotate_text_size',
                 lambda xx: setattr(self.camera, 'annotate_text_size', xx))
         self.camera.brightness = self.get_parameter_value('camera_brightness')
         self.camera.contrast = self.get_parameter_value('camera_contrast')
@@ -226,7 +226,17 @@ class ROS2_raspicam_node(Node):
             ret = param_desc.value
         return ret
 
-    def get_parameter_set_if_set(self, param, set_function):
+    def set_parameter_defaults(self, params):
+        # If a parameter has not been set externally, set the value to a default.
+        # Passed a list of "(parameterName, parameterType, defaultValue)" tuples.
+        parameters_to_set = []
+        for (pparam, ptype, pdefault) in params:
+            if not self.has_parameter(pparam):
+                parameters_to_set.append( Parameter(pparam, ptype, pdefault) )
+        if len(parameters_to_set) > 0:
+            self.set_parameters(parameters_to_set)
+
+    def parameter_set_if_set(self, param, set_function):
         # If there is a parameter set, do set_function with the value
         if self.has_parameter(param):
             set_function(self.get_parameter_value(param))
