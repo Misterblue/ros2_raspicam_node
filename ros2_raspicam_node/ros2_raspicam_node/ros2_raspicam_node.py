@@ -108,9 +108,9 @@ class ROS2_raspicam_node(Node):
         self.camera.brightness = self.get_parameter_value('camera_brightness')
         self.camera.contrast = self.get_parameter_value('camera_contrast')
         if self.has_parameter('camera_exif_copyright'):
-            self.camera.exif_tage['IFDO.Copyright'] = self.get_parameter_value('camera_exif_copyright')
+            self.camera.exif_tags['IFDO.Copyright'] = self.get_parameter_value('camera_exif_copyright')
         if self.has_parameter('camera_exif_user_comment'):
-            self.camera.exif_tage['EXIF.UserComment'] = self.get_parameter_value('camera_exif_user_comment')
+            self.camera.exif_tags['EXIF.UserComment'] = self.get_parameter_value('camera_exif_user_comment')
         self.camera.exposure_compensation = self.get_parameter_value('camera_exposure_compenstation')
         self.camera.exposure_mode = self.get_parameter_value('camera_exposure_mode')
         self.camera.hflip = self.get_parameter_value('camera_hflip')
