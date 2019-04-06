@@ -16,7 +16,6 @@
 import queue
 import threading
 import time
-import sys
 
 import rclpy
 from rclpy.parameter import Parameter
