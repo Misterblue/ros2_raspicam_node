@@ -2,9 +2,10 @@
 
 A Python ROS2 node for generating images from the Raspberry Pi camera. This uses the wonderful [PiCamera] to drive the camera while this node pacakage takes the JPEG images and sends them out over a ROS2 topic.
 
-| Topic                         | Message Format                   | Data                                                       |
-| ----------------------------- | -------------------------------- | ---------------------------------------------------------- |
-| /raspicam/raspicam_compressed | sensor_msgs.msg.CompressedImage_ | data: image<br>format: "jpeg"<br>header.frame_id: frameNum |
+| Transport | Topic                         | Message Format                   | Data                                                       |
+|-------- | ----------------------------- | -------------------------------- | ---------------------------------------------------------- |
+| `image_transport:=raw` | `/raspicam/image` | `sensor_msgs/Image` | data: image<br>encoding: "rgb8"<br>header.frame_id: "camera" |
+| `image_transport:=compressed` | `/raspicam/image/compressed` | `sensor_msgs/CompressedImage` | data: image<br>format: "jpeg"<br>header.frame_id: "camera" |
 
 Since this project is being worked on, it does not output a raw image, output camera info, or accept parameters. That will happen in a later step.
 
