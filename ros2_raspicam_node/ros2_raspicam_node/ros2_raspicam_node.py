@@ -71,7 +71,7 @@ class ROS2_raspicam_node(Node):
             ] )
 
         self.camera = picamera.PiCamera()
-        time.sleep(1);  # let camera initialization complete
+        time.sleep(1)  # let camera initialization complete
 
         self.initialize_publisher()
         self.set_camera_parameters()
