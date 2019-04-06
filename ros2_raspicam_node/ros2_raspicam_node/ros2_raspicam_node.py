@@ -30,10 +30,7 @@ class ROS2_raspicam_node(Node):
         super().__init__('ros2_raspicam_node', namespace='raspicam')
 
         self.set_parameter_defaults( [
-            ('compressed_image', Parameter.Type.BOOL, True),
-            ('image_topic', Parameter.Type.STRING, 'raspicam_uncompressed'),
-            ('compressed_image_topic', Parameter.Type.STRING, 'raspicam_compressed'),
-
+            ('image_transport', Parameter.Type.STRING, "raw"),
             # off, auto, sunlight, cloudy, shade, trungsten, florescent, incandescent, flash, horizon
             ('camera_awb_mode', Parameter.Type.STRING, 'auto'),
             # ('camera_annotate_background', Parameter.Type.STRING, 'black'),
@@ -70,7 +67,12 @@ class ROS2_raspicam_node(Node):
             ('camera_sharpness', Parameter.Type.INTEGER, 10),
             ] )
 
-        self.camera = picamera.PiCamera()
+        # rather than making this configurable via parameters, topics should be remapped
+        # from "image" to the desire topic using the remapping argument, e.g. image:=my_topic
+        self.image_base_topic = "image"
+        self.image_transport = self.get_parameter_value('image_transport')
+
+        self.camera = picamera.PiCamera(framerate=60)
         time.sleep(1)  # let camera initialization complete
 
         self.initialize_publisher()
@@ -86,16 +88,17 @@ class ROS2_raspicam_node(Node):
         super().destroy_node()
 
     def initialize_publisher(self):
-        if self.get_parameter_value('compressed_image'):
-            self.publisher = self.create_publisher(CompressedImage,
-                                self.get_parameter_value('compressed_image_topic'))
+        if self.image_transport == "raw":
+            self.publisher = self.create_publisher(Image, self.image_base_topic)
+        elif self.image_transport == "compressed":
+            self.publisher = self.create_publisher(CompressedImage, self.image_base_topic+"/compressed")
         else:
-            self.publisher = self.create_publisher(Image,
-                                self.get_parameter_value('image_topic'))
+            raise Exception('Unsupported image transport: ' + image_transport)
         self.frame_num = 0
         
     def set_camera_parameters(self):
         # https://picamera.readthedocs.io/en/release-1.13/api_camera.html
+        self.camera.raw_format = 'rgb'
         self.camera.awb_mode = self.get_parameter_value('camera_awb_mode')
         self.parameter_set_if_set('camera_annotate_background',
                 lambda xx: setattr(self.camera, 'annotate_background', xx))
@@ -158,33 +161,47 @@ class ROS2_raspicam_node(Node):
     def take_pictures(self):
         # Take compressed images and put into the queue.
         # 'jpeg', 'rgb'
+        if self.image_transport == "raw":
+            img_format='raw' # rgb 8bit
+        elif self.image_transport == "compressed":
+            img_format='jpeg'
+        else:
+            # we have checked this before
+            img_format=None
+
         try:
-            for capture in self.camera.capture_continuous(self.write_capture(self), format='jpeg'):
+            for capture in self.camera.capture_continuous(self.write_capture(self,img_format), format=img_format):
                 if self.capture_event.is_set():
                     break
-                time.sleep(0.5)
                 # The exit flag could have been set while in the sleep
                 if self.capture_event.is_set():
                     break
-        except:
-            self.get_logger().error('CAM: exiting take_pictures because of exception')
+        except Error as e:
+            self.get_logger().error('CAM: exiting take_pictures because of exception: '+e.message)
 
     class write_capture():
         # Writer object that writes the passed data to the queue
-        def __init__(self, pparent):
+        def __init__(self, pparent, img_format):
             self.parent = pparent
+            self.img_format = img_format
 
         def write(self, d):
             if not self.parent.capture_event.is_set():
                 with self.parent.queue_lock:
-                    msg = CompressedImage()
-                    msg.data = d
-                    msg.format = 'jpeg'
-                    msg.header.frame_id = str(self.parent.frame_num)
+                    if self.img_format == 'raw':
+                        msg = Image(encoding = 'rgb8')
+                        msg.header.frame_id = str(self.parent.frame_num)
+                        self.parent.frame_num += 1
+
+                    elif self.img_format == 'jpeg':
+                        msg = CompressedImage(format = 'jpeg')
+                        msg.header.frame_id = str(self.parent.frame_num)
+
                     self.parent.frame_num += 1
                     self.parent.get_logger().debug('CAM: capture frame. size=%s, frame=%s'
-                            % (len(d), msg.header.frame_id) )
-                    # msg.header.stamp = time.Time
+                                                   % (len(d), msg.header.frame_id) )
+                    msg.header.frame_id = "camera_frame"
+                    msg.data = d
                     self.parent.capture_queue.put(msg)
 
         def flush(self):
