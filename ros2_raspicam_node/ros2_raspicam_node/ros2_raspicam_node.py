@@ -20,7 +20,7 @@ import time
 import rclpy
 from rclpy.parameter import Parameter
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import Image, CompressedImage
 
 import picamera
 
